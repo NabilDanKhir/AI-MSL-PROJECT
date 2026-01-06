@@ -1,6 +1,6 @@
 [
   {
-    "label": "THANKS",
+    "label": "REST",
     "landmarks": [0.41, 0.38, -0.02, ...]
   },
   {
