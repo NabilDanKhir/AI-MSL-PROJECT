@@ -47,8 +47,6 @@ export default function HandTranslator() {
   }
 
   async function init() {
-    // ⚠️ Load model AFTER camera works
-    // If model.json does not exist yet, comment this temporarily
     modelRef.current = await tf.loadLayersModel("/model/model.json");
 
     handsRef.current = new window.Hands({
