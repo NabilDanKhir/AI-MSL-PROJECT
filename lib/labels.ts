@@ -1,4 +1,4 @@
 export const LABELS = [
-  "REST",
-  "HELLO"
+  "A",
+  "B"
 ];

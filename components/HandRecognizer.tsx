@@ -176,20 +176,30 @@ export default function HandRecognizer() {
 
           <button
             className="btn"
-            onClick={() => {
-              const blob = new Blob(
-                [JSON.stringify(samplesRef.current, null, 2)],
-                { type: "application/json" }
-              );
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = "dataset.json";
-              a.click();
+            onClick={async () => {
+              if (samplesRef.current.length === 0) {
+                alert("No data to save.");
+                return;
+              }
+
+              const res = await fetch("/api/save-dataset", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(samplesRef.current),
+              });
+
+              if (res.ok) {
+                alert("Dataset saved to dataset_dirty.json");
+              } else {
+                alert("Failed to save dataset");
+              }
             }}
           >
-            Download Dataset
+            Save Dataset
           </button>
+
         </div>
       </div>
     </div>
