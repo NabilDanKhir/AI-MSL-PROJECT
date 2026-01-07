@@ -1,0 +1,17 @@
+main {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #0f172a;
+    color: white;
+}
+
+h1{
+    position: absolute;
+    top: 20px;              
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    size: 50;
+}

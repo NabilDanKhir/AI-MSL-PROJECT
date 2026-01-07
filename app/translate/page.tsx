@@ -1,4 +1,5 @@
 import ClientTranslateWrapper from "@/components/ClientTranslateWrapper";
+import "./translate.css";
 
 export default function TranslatePage() {
   return (

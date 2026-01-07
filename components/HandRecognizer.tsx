@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+
 declare global {
   interface Window {
     Hands: any;
@@ -17,8 +18,10 @@ export default function HandRecognizer() {
 
   const recordingRef = useRef(false);
   const samplesRef = useRef<any[]>([]);
-  const currentLabel = "REST";
-
+  //const currentLabel = "REST";
+  const [currentLabel, setCurrentLabel] = useState("");
+  const currentLabelRef = useRef("");
+  
   const [status, setStatus] = useState("Waiting...");
 
   useEffect(() => {
@@ -26,25 +29,26 @@ export default function HandRecognizer() {
   }, []);
 
   async function loadScripts() {
-  const load = (src: string) =>
-    new Promise<void>((resolve) => {
-      const script = document.createElement("script");
-      script.src = src;
-      script.async = true;
-      script.onload = () => resolve();
-      document.body.appendChild(script);
-    });
+    const load = (src: string) =>
+      new Promise<void>((resolve) => {
+        const script = document.createElement("script");
+        script.src = src;
+        script.async = true;
+        script.onload = () => resolve();
+        document.body.appendChild(script);
+      });
 
-  await load("https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js");
-  await load("https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js");
-}
+    await load("https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js");
+    await load(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
+    );
+  }
 
   async function init() {
     handsRef.current = new window.Hands({
-    locateFile: (file: string) =>
+      locateFile: (file: string) =>
         `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
     });
-
 
     handsRef.current.setOptions({
       maxNumHands: 1,
@@ -86,76 +90,108 @@ export default function HandRecognizer() {
     if (!results.multiHandLandmarks) return;
 
     for (const landmarks of results.multiHandLandmarks) {
-        window.drawConnectors(
+      window.drawConnectors(
         ctx,
         landmarks,
         window.HAND_CONNECTIONS,
         { color: "#00FF00", lineWidth: 2 }
-        );
+      );
 
-        window.drawLandmarks(
+      window.drawLandmarks(
         ctx,
         landmarks,
         { color: "#FF0000", lineWidth: 1 }
-        );
-      
+      );
+
       if (recordingRef.current) {
         samplesRef.current.push({
-          label: currentLabel,
-          landmarks: landmarks.flatMap((p) => [p.x, p.y, p.z]),
+          label: currentLabelRef.current,
+          landmarks: landmarks.flatMap((p: any) => [p.x, p.y, p.z]),
         });
       }
     }
   }
 
   return (
-    <div style={{ textAlign: "center" }}>
-      <div style={{ position: "relative", width: 640 }}>
-        <video ref={videoRef} width={640} playsInline muted />
-        <canvas
-          ref={canvasRef}
-          width={640}
-          height={480}
-          style={{ position: "absolute", top: 0, left: 0 }}
+    <div className="page-layout">
+      {/* LEFT PANEL */}
+      <div className="label-panel">
+        <h3>Session Label</h3>
+
+        <input
+          type="text"
+          placeholder="e.g. HELLO, THANK YOU"
+          value={currentLabel}
+          onChange={(e) => {
+            setCurrentLabel(e.target.value);
+            currentLabelRef.current = e.target.value;
+          }}
         />
+
+        <p>
+          Current label:
+          <br />
+          <strong>{currentLabel || "—"}</strong>
+        </p>
       </div>
 
-      <h3>{status}</h3>
+      {/* MAIN CONTENT */}
+      <div className="main-content">
+        <div style={{ position: "relative", width: 640 }}>
+          <video ref={videoRef} width={640} playsInline muted />
+          <canvas
+            ref={canvasRef}
+            width={640}
+            height={480}
+            style={{ position: "absolute", top: 0, left: 0 }}
+          />
+        </div>
 
-      <button
-        onClick={() => {
-          recordingRef.current = true;
-          setStatus("Recording...");
-        }}
-      >
-        Start Recording
-      </button>
+        <h3>{status}</h3>
 
-      <button
-        onClick={() => {
-          recordingRef.current = false;
-          setStatus("Stopped");
-        }}
-      >
-        Stop Recording
-      </button>
+        <div className="button-group">
+          <button
+            className="btn"
+            onClick={() => {
+              if (!currentLabel) {
+                alert("Please enter a label before recording.");
+                return;
+              }
+              recordingRef.current = true;
+              setStatus("Recording...");
+            }}
+          >
+            Start Recording
+          </button>
 
-      <button
-        onClick={() => {
-          console.log("Samples:", samplesRef.current.length);
-          const blob = new Blob(
-            [JSON.stringify(samplesRef.current, null, 2)],
-            { type: "application/json" }
-          );
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "dataset.json";
-          a.click();
-        }}
-      >
-        Download Dataset
-      </button>
+          <button
+            className="btn"
+            onClick={() => {
+              recordingRef.current = false;
+              setStatus("Stopped");
+            }}
+          >
+            Stop Recording
+          </button>
+
+          <button
+            className="btn"
+            onClick={() => {
+              const blob = new Blob(
+                [JSON.stringify(samplesRef.current, null, 2)],
+                { type: "application/json" }
+              );
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "dataset.json";
+              a.click();
+            }}
+          >
+            Download Dataset
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
