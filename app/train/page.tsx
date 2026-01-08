@@ -3,11 +3,14 @@
 import * as tf from "@tensorflow/tfjs";
 import dataset from "@/ml/dataset_clean.json";
 
-const LABELS = ["REST", "HELLO"];
+import { LABELS } from "@/lib/labels";  
 
 export default function TrainPage() {
   async function train() {
-    const labelToIndex: any = { REST: 0, HELLO: 1 };
+    const labelToIndex = Object.fromEntries(
+    LABELS.map((label, i) => [label, i])
+    );
+
 
     const xs = dataset.map(d => d.landmarks);
     const ys = dataset.map(d => labelToIndex[d.label]);
@@ -33,7 +36,7 @@ export default function TrainPage() {
     });
 
     // ✅ THIS WORKS IN BROWSER
-    await model.save("downloads://msl-model");
+    await model.save("downloads://model");
 
     alert("Model trained and downloaded!");
   }

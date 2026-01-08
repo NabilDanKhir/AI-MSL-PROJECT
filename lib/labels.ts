@@ -1,4 +1,12 @@
 export const LABELS = [
-  "A",
-  "B"
+  "Air",
+  "Demam",
+  "Dengar",
+  "Makan",
+  "Minum",
+  "Salah",
+  "Saya",
+  "Senyap",
+  "Tidur",
+  "Waktu"
 ];
