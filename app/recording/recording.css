@@ -12,3 +12,20 @@ h1 {
   font-size: 30px;
   font-weight: 600;
 }
+
+.recording-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 16px;
+  background-color: #0f172a;
+  color: white;
+}
+
+/* Back button sits close to controls */
+.back-inline {
+  margin-top: 12px;     /* small gap only */
+  margin-bottom: 16px;
+}

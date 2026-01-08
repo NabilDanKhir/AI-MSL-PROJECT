@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as tf from "@tensorflow/tfjs";
-import { LABELS } from "@/lib/labels";
+import LABELS from "@/lib/labels.json";
 
 declare global {
   interface Window {
@@ -19,7 +19,7 @@ export default function HandTranslator() {
   const handsRef = useRef<any>(null);
   const modelRef = useRef<tf.LayersModel | null>(null);
 
-  const lastLabelRef = useRef("REST");
+  const lastLabelRef = useRef("Waiting...");
   const stableCountRef = useRef(0);
 
   const [output, setOutput] = useState("Waiting...");
@@ -88,56 +88,62 @@ export default function HandTranslator() {
 
   function onResults(results: any) {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+  if (!canvas) return;
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (!results.multiHandLandmarks) {
-      setOutput("REST");
+  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+    stableCountRef.current = 0;
+    setOutput("");
+    return;
+  }
+
+  // We only track ONE hand
+  const landmarks = results.multiHandLandmarks[0];
+
+    // ---------- NORMALIZATION ----------
+    const base = landmarks[0]; // wrist
+    const flat = landmarks.flatMap((p: any) => [
+      p.x - base.x,
+      p.y - base.y,
+      p.z - base.z,
+    ]);
+
+    // ---------- MODEL PREDICTION ----------
+    const input = tf.tensor([flat]);
+    const pred = modelRef.current.predict(input) as tf.Tensor;
+    const scores = Array.from(pred.dataSync());
+    tf.dispose([input, pred]);
+
+    // ---------- CONFIDENCE THRESHOLD ----------
+    const maxScore = Math.max(...scores);
+    const index = scores.indexOf(maxScore);
+    const CONFIDENCE_THRESHOLD = 0.85;
+
+    const label = LABELS[index];
+
+    // reject low confidence
+    if (maxScore < CONFIDENCE_THRESHOLD || label === "UNKNOWN") {
+      stableCountRef.current = 0;
+      setOutput("");
       return;
     }
 
-    for (const landmarks of results.multiHandLandmarks) {
-      // Draw hand
-      window.drawConnectors(
-        ctx,
-        landmarks,
-        window.HAND_CONNECTIONS,
-        { color: "#00FF00", lineWidth: 2 }
-      );
-
-      window.drawLandmarks(ctx, landmarks, {
-        color: "#FF0000",
-        lineWidth: 1,
-      });
-
-      // ---------- PREDICTION ----------
-      if (!modelRef.current) return;
-
-      const flat = landmarks.flatMap((p: any) => [p.x, p.y, p.z]);
-
-      const input = tf.tensor([flat]);
-      const pred = modelRef.current.predict(input) as tf.Tensor;
-      const index = pred.argMax(-1).dataSync()[0];
-      tf.dispose([input, pred]);
-
-      const label = LABELS[index];
-
-      // smoothing
-      if (label === lastLabelRef.current) {
-        stableCountRef.current++;
-      } else {
-        stableCountRef.current = 0;
-        lastLabelRef.current = label;
-      }
-
-      if (stableCountRef.current >= 5) {
-        setOutput(label);
-      }
+    // ---------- TEMPORAL STABILITY ----------
+    if (label === lastLabelRef.current) {
+      stableCountRef.current++;
+    } else {
+      stableCountRef.current = 1;
+      lastLabelRef.current = label;
     }
+
+    if (stableCountRef.current >= 5) {
+      setOutput(label);
+    }
+
   }
 
   /* ---------------- UI ---------------- */
@@ -154,7 +160,7 @@ export default function HandTranslator() {
         />
       </div>
 
-      <h2 style={{ marginTop: 16, fontSize: 32 }}>{output}</h2>
+      <h2 style={{ marginTop: 16, fontSize: 32 }}>{output || "Waiting"}</h2>
     </div>
   );
 }

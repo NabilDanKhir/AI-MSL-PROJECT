@@ -18,14 +18,28 @@ export default function HandRecognizer() {
 
   const recordingRef = useRef(false);
   const samplesRef = useRef<any[]>([]);
-  //const currentLabel = "REST";
   const [currentLabel, setCurrentLabel] = useState("");
   const currentLabelRef = useRef("");
-  
   const [status, setStatus] = useState("Waiting...");
 
+  const cameraStartedRef = useRef(false);
+
+
+  /* =========================
+     INIT (ORIGINAL BEHAVIOUR)
+     ========================= */
   useEffect(() => {
     loadScripts().then(init);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (videoRef.current?.srcObject) {
+        const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+        tracks.forEach(track => track.stop());
+      }
+      cameraStartedRef.current = false;
+    };
   }, []);
 
   async function loadScripts() {
@@ -63,12 +77,22 @@ export default function HandRecognizer() {
 
   async function startCamera() {
     if (!videoRef.current) return;
+    if (cameraStartedRef.current) return;
 
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    videoRef.current.srcObject = stream;
-    await videoRef.current.play();
+    cameraStartedRef.current = true;
 
-    requestAnimationFrame(processFrame);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      videoRef.current.srcObject = stream;
+
+      await videoRef.current.play().catch(() => {
+        // AbortError is safe to ignore
+      });
+
+      requestAnimationFrame(processFrame);
+    } catch (err) {
+      console.error("Camera start failed:", err);
+    }
   }
 
   async function processFrame() {
@@ -112,6 +136,21 @@ export default function HandRecognizer() {
     }
   }
 
+  /* =========================
+     SESSION LABEL SAVE (FIX)
+     ========================= */
+  async function saveSessionLabel(label: string) {
+    const res = await fetch("/api/labels", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label }),
+    });
+
+    if (!res.ok) {
+      throw new Error("Failed to save label");
+    }
+  }
+
   return (
     <div className="page-layout">
       {/* LEFT PANEL */}
@@ -152,11 +191,19 @@ export default function HandRecognizer() {
         <div className="button-group">
           <button
             className="btn"
-            onClick={() => {
+            onClick={async () => {
               if (!currentLabel) {
                 alert("Please enter a label before recording.");
                 return;
               }
+
+              try {
+                await saveSessionLabel(currentLabel.trim());
+              } catch {
+                alert("Failed to save label");
+                return;
+              }
+
               recordingRef.current = true;
               setStatus("Recording...");
             }}
@@ -184,22 +231,19 @@ export default function HandRecognizer() {
 
               const res = await fetch("/api/save-dataset", {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(samplesRef.current),
               });
 
-              if (res.ok) {
-                alert("Dataset saved to dataset_dirty.json");
-              } else {
-                alert("Failed to save dataset");
-              }
+              alert(
+                res.ok
+                  ? "Dataset saved to dataset_dirty.json"
+                  : "Failed to save dataset"
+              );
             }}
           >
             Save Dataset
           </button>
-
         </div>
       </div>
     </div>
