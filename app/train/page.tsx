@@ -97,9 +97,9 @@ export default function TrainPage() {
           console.log(
             `Epoch ${epoch + 1}/${EPOCHS}`,
             "loss:", logs?.loss,
-            "accuracy:", logs?.accuracy,
             "val_loss:", logs?.val_loss,
-            "val_accuracy:", logs?.val_accuracy
+            "accuracy:", logs?.accuracy ?? logs?.acc ?? "N/A",
+            "val_accuracy:", logs?.val_accuracy ?? logs?.val_acc ?? "N/A",
           );
 
           if (!logs?.val_loss) return;
