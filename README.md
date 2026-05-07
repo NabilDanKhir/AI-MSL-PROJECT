@@ -1,36 +1,58 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MSL Realtime — Malaysian Sign Language Recognition
 
-## Getting Started
+A real-time hand gesture recognition system for Malaysian Sign Language (MSL), built entirely in the browser. It uses your webcam to detect hand landmarks, runs them through a trained neural network, and displays the predicted sign live.
 
-First, run the development server:
+## What it does
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+The app has three main parts:
+
+**Live Translation** (`/translate`) — Point your webcam at your hand. MediaPipe detects 21 hand landmarks per frame, normalizes them relative to the wrist, and feeds them into a TensorFlow.js model that predicts which MSL sign you're making. A temporal stability filter (5 consecutive matching frames at ≥85% confidence) prevents flickering.
+
+**Record Dataset** (`/recording`) — Collect your own training data. Enter a label (e.g. `Makan`), press Start Recording, hold the sign in front of your webcam, then Stop and Save. Hand landmark coordinates are captured each frame and appended to `dataset_dirty.json`.
+
+**Train Model** (`/train`) — Trains the neural network in the browser on your collected dataset. Uses an 80/20 train/val split, early stopping (patience=10), and saves the best weights. The resulting model is written to `public/model/` and picked up immediately by the translator.
+
+## Recognized signs
+
+| Label | Meaning |
+|-------|---------|
+| Demam | Fever |
+| Makan | Eat |
+| Minum | Drink |
+| Saya | I / Me |
+| Senyap | Quiet |
+| Waktu | Time |
+| Baik | Good |
+| Tak Baik | Not Good |
+
+## Model architecture
+
+Input: 63 features (21 landmarks × XYZ, normalized to wrist position)
+
+```
+Dense(128, relu) → Dropout(0.3) → Dense(64, relu) → Dropout(0.3) → Dense(9, softmax)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Optimizer: Adam (lr=0.001), loss: categorical crossentropy, 100 epochs max with early stopping.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Tech stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Next.js 16** + **React 19** + **TypeScript**
+- **TensorFlow.js** — model training and inference, fully in-browser
+- **MediaPipe Hands** — real-time hand landmark detection
+- **Tailwind CSS**
 
-## Learn More
+## Getting started
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm install
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Open [http://localhost:3000](http://localhost:3000). Allow camera access when prompted.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+A pre-trained model is included in `public/model/` so Live Translation works out of the box. To train your own:
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Go to `/recording`, record samples for each sign, save the dataset.
+2. Go to `/train`, click Train Model, wait for it to finish.
+3. Go to `/translate` — the new model loads automatically.
