@@ -2,68 +2,69 @@ import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#0f172a",
-        color: "white",
-      }}
-    >
-      <div
-        style={{
-          textAlign: "center",
-          maxWidth: 600,
-          padding: 24,
-        }}
-      >
-        <h1 style={{ fontSize: 36, marginBottom: 12 }}>
-          Live Sign Language
+    <main className="home-bg">
+      <div className="home-grid" aria-hidden="true" />
+      <div className="home-glow" aria-hidden="true" />
+
+      <div className="hero">
+        <div className="hero-eyebrow">
+          <span className="badge badge-green">
+            <span className="badge-dot" />
+            System Active
+          </span>
+        </div>
+
+        <h1 className="hero-h1">
+          Malaysian Sign Language<br />
+          <span className="hero-accent">Real-Time</span> Recognition
         </h1>
 
-        <p style={{ fontSize: 18, opacity: 0.9, marginBottom: 32 }}>
-          Real-Time Hand Gesture Recognition System
+        <p className="hero-sub">
+          Detect and translate hand gestures instantly using your webcam.
+          Powered by MediaPipe hand tracking and a custom TensorFlow.js model.
         </p>
 
-        <div style={{ display: "flex", gap: 16, justifyContent: "center" }}>
+        <div className="hero-tech-stack">
+          <span>MediaPipe</span>
+          <span className="hero-tech-dot" />
+          <span>TensorFlow.js</span>
+          <span className="hero-tech-dot" />
+          <span>Next.js</span>
+        </div>
+
+        <div className="hero-btns">
           <Link href="/translate">
-            <button
-              style={{
-                padding: "12px 24px",
-                fontSize: 16,
-                borderRadius: 8,
-                border: "none",
-                cursor: "pointer",
-                background: "#22c55e",
-                color: "#0f172a",
-                fontWeight: 600,
-              }}
-            >
+            <button className="btn hero-btn-primary" aria-label="Open live translation">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M15 10l5-5m0 0l-5-5m5 5H4" />
+                <path d="M9 18L4 13m0 0l5-5M4 13h15" />
+              </svg>
               Live Translation
             </button>
           </Link>
 
           <Link href="/recording">
-            <button
-              style={{
-                padding: "12px 24px",
-                fontSize: 16,
-                borderRadius: 8,
-                border: "1px solid #94a3b8",
-                cursor: "pointer",
-                background: "transparent",
-                color: "white",
-              }}
-            >
+            <button className="btn btn-ghost hero-btn-secondary" aria-label="Open dataset recorder">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <circle cx="12" cy="12" r="7" />
+              </svg>
               Record Dataset
+            </button>
+          </Link>
+
+          <Link href="/train">
+            <button className="btn btn-ghost hero-btn-secondary" aria-label="Open model trainer">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                <path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
+              </svg>
+              Train Model
             </button>
           </Link>
         </div>
 
-        <p style={{ marginTop: 32, fontSize: 14, opacity: 0.7 }}>
-          AI Project · Real-Time MSL Recognition
+        <p className="hero-footer-text">
+          AI Project · Real-Time MSL Recognition System
         </p>
       </div>
     </main>

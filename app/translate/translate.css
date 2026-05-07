@@ -1,29 +1,7 @@
-main {
-  min-height: 100vh;
+.translate-main {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start; /* ← IMPORTANT */
-  padding-top: 24px;
-  background-color: #0f172a;
-  color: white;
+  padding: 32px 24px 48px;
 }
-
-
-h1{
-  margin-bottom: 16px;
-  text-align: center;
-  font-size: 20px;
-}
-
-.translate-page {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-/* Space between Waiting text and button */
-.back-btn-bottom {
-  margin-top: 24px;
-}
-

@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useRef } from "react";
 import * as tf from "@tensorflow/tfjs";
-
 import LABELS from "@/lib/labels.json";
+import "./train.css";
 
 const NUM_CLASSES = LABELS.length;
 
@@ -19,7 +20,6 @@ export default function TrainPage() {
     setIsTraining(true);
     setProgress(0);
 
-    // --- load dataset ---
     const res = await fetch("/dataset_clean.json");
     const dataset = await res.json();
 
@@ -36,7 +36,7 @@ export default function TrainPage() {
 
     if (invalidLabels.length > 0) {
       console.error("Invalid labels found:", new Set(invalidLabels));
-      setStatusMsg("❌ Dataset contains labels not in labels.json");
+      setStatusMsg("error:Dataset contains labels not in labels.json");
       setIsTraining(false);
       return;
     }
@@ -60,7 +60,6 @@ export default function TrainPage() {
       NUM_CLASSES
     );
 
-    // --- model architecture ---
     const model = tf.sequential();
     model.add(tf.layers.dense({ inputShape: [63], units: 128, activation: "relu" }));
     model.add(tf.layers.dropout({ rate: 0.3 }));
@@ -80,7 +79,6 @@ export default function TrainPage() {
     let bestWeights: tf.Tensor[] | null = null;
     let patienceCounter = 0;
 
-    // --- training loop ---
     await model.fit(xs, ys, {
       epochs: EPOCHS,
       batchSize: 32,
@@ -89,14 +87,6 @@ export default function TrainPage() {
         onEpochEnd: async (epoch, logs) => {
           const percent = Math.round(((epoch + 1) / EPOCHS) * 100);
           setProgress(percent);
-
-          console.log(
-            `Epoch ${epoch + 1}/${EPOCHS}`,
-            "loss:", logs?.loss,
-            "val_loss:", logs?.val_loss,
-            "accuracy:", logs?.accuracy ?? logs?.acc ?? "N/A",
-            "val_accuracy:", logs?.val_accuracy ?? logs?.val_acc ?? "N/A"
-          );
 
           if (!logs?.val_loss) return;
 
@@ -118,7 +108,7 @@ export default function TrainPage() {
           if (bestWeights) model.setWeights(bestWeights);
           modelRef.current = model;
           setProgress(100);
-          setStatusMsg("⏳ Saving model...");
+          setStatusMsg("saving:Saving model...");
           await saveModel(model);
         },
       },
@@ -130,14 +120,11 @@ export default function TrainPage() {
 
   async function saveModel(model: tf.LayersModel) {
     try {
-      // serialize model using TF.js built-in IOHandler
       let modelJSON: any = null;
       let weightsBase64 = "";
 
       await model.save({
         save: async (modelArtifacts) => {
-          // modelArtifacts.modelTopology  → the JSON topology
-          // modelArtifacts.weightData     → ArrayBuffer of binary weights
           modelJSON = {
             modelTopology: modelArtifacts.modelTopology,
             format: "layers-model",
@@ -169,51 +156,96 @@ export default function TrainPage() {
       const result = await res.json();
 
       if (result.success) {
-        setStatusMsg("✅ Model saved! public/model/ has been updated.");
+        setStatusMsg("success:Model saved! public/model/ has been updated.");
       } else {
-        setStatusMsg(`❌ ${result.error}`);
+        setStatusMsg(`error:${result.error}`);
       }
     } catch (err) {
       console.error("[saveModel]", err);
-      setStatusMsg("❌ Failed to serialize or save model.");
+      setStatusMsg("error:Failed to serialize or save model.");
     }
   }
 
+  const statusType = statusMsg.startsWith("success:")
+    ? "success"
+    : statusMsg.startsWith("error:")
+    ? "error"
+    : "info";
+  const statusText = statusMsg.includes(":") ? statusMsg.split(":").slice(1).join(":") : statusMsg;
+
   return (
-    <div style={{ padding: 40 }}>
-      <h1>Train MSL Model</h1>
+    <div className="page-container">
+      <nav className="topbar">
+        <Link href="/" className="btn-back" aria-label="Back to home">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M19 12H5M5 12l7-7M5 12l7 7" />
+          </svg>
+          Back
+        </Link>
+        <span className="topbar-title">Train Model</span>
+        <span className="topbar-logo">MSL</span>
+      </nav>
 
-      <button onClick={train} disabled={isTraining}>
-        {isTraining ? "Training..." : "Train Model"}
-      </button>
-
-      {isTraining && (
-        <div style={{ marginTop: 20, width: 300 }}>
-          <div
-            style={{
-              height: 20,
-              width: "100%",
-              border: "1px solid #ccc",
-              borderRadius: 4,
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                width: `${progress}%`,
-                backgroundColor: "#4caf50",
-                transition: "width 0.3s",
-              }}
-            />
+      <main className="train-main">
+        <div className="train-card">
+          <div className="train-header">
+            <h1 className="train-title">Train MSL Model</h1>
+            <p className="train-desc">
+              Trains a neural network on your recorded dataset using TensorFlow.js.
+              Early stopping is applied automatically.
+            </p>
           </div>
-          <p style={{ marginTop: 8 }}>{progress}%</p>
-        </div>
-      )}
 
-      {statusMsg && (
-        <p style={{ marginTop: 16, fontSize: 15 }}>{statusMsg}</p>
-      )}
+          <button
+            className="btn"
+            onClick={train}
+            disabled={isTraining}
+            style={{ width: "100%", padding: "13px" }}
+            aria-label={isTraining ? "Training in progress" : "Start training"}
+          >
+            {isTraining ? (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ animation: "spin 1s linear infinite" }}>
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+                Training...
+              </>
+            ) : (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M5 3l14 9-14 9V3z" />
+                </svg>
+                Train Model
+              </>
+            )}
+          </button>
+
+          {(isTraining || progress > 0) && (
+            <div className="train-progress-section">
+              <div className="train-progress-label">
+                <span>Progress</span>
+                <span className="train-progress-pct">{progress}%</span>
+              </div>
+              <div className="progress-bar" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
+                <div className="progress-fill" style={{ width: `${progress}%` }} />
+              </div>
+            </div>
+          )}
+
+          {statusText && (
+            <div className={`train-status ${statusType}`} role="status" aria-live="polite">
+              {statusText}
+            </div>
+          )}
+        </div>
+      </main>
+
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
