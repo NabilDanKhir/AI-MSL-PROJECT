@@ -374,6 +374,154 @@ export default function HandTranslator() {
           </span>
         )}
         </div>
+
+        {/* Interpretation panel */}
+        {(isInterpreting || interpretation || interpretError || showApiKeyInput) && (
+          <div style={{
+            background: "var(--glass-bg)",
+            border: "1px solid var(--border-2)",
+            borderRadius: "var(--radius-lg)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            padding: "24px 32px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 14,
+          }}>
+            {/* Header row */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted)" }}>
+                Interpretation
+              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {/* Language toggle */}
+                <div style={{ display: "flex", borderRadius: "var(--radius)", border: "1px solid var(--border-2)", overflow: "hidden", fontSize: 12, fontWeight: 700 }}>
+                  {(["both", "malay"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setLangMode(mode)}
+                      style={{
+                        padding: "5px 12px",
+                        background: langMode === mode ? "var(--accent)" : "transparent",
+                        color: langMode === mode ? "#0a1628" : "var(--muted)",
+                        border: "none",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                        fontFamily: "var(--font-heading, 'Space Grotesk', sans-serif)",
+                        fontSize: 12,
+                        transition: "all 150ms ease",
+                      }}
+                    >
+                      {mode === "both" ? "Both" : "Malay"}
+                    </button>
+                  ))}
+                </div>
+                {/* Clear button */}
+                <button
+                  onClick={clearInterpretation}
+                  style={{
+                    padding: "5px 12px",
+                    background: "transparent",
+                    border: "1px solid var(--border-2)",
+                    borderRadius: "var(--radius)",
+                    color: "var(--muted)",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontFamily: "var(--font-heading, 'Space Grotesk', sans-serif)",
+                    transition: "all 150ms ease",
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {/* Loading */}
+            {isInterpreting && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--muted)", fontSize: 14 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: "spin 1s linear infinite", flexShrink: 0 }} aria-hidden="true">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+                Interpreting…
+              </div>
+            )}
+
+            {/* Result */}
+            {!isInterpreting && interpretation && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{
+                  fontSize: 24,
+                  fontWeight: 700,
+                  fontFamily: "var(--font-heading, 'Space Grotesk', sans-serif)",
+                  color: "var(--text)",
+                  letterSpacing: "-0.02em",
+                  lineHeight: 1.2,
+                }}>
+                  {interpretation.malay}
+                </div>
+                {langMode === "both" && (
+                  <div style={{ fontSize: 16, color: "var(--muted)", fontStyle: "italic" }}>
+                    {interpretation.english}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Error */}
+            {!isInterpreting && interpretError && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <span style={{ fontSize: 13, color: "#fca5a5" }}>{interpretError}</span>
+                <button
+                  onClick={interpret}
+                  style={{
+                    padding: "5px 12px",
+                    background: "transparent",
+                    border: "1px solid rgba(239,68,68,0.28)",
+                    borderRadius: "var(--radius)",
+                    color: "#fca5a5",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontFamily: "var(--font-heading, 'Space Grotesk', sans-serif)",
+                    flexShrink: 0,
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {/* API key input */}
+            {showApiKeyInput && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                  No Gemini API key found. Get one free at{" "}
+                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
+                    aistudio.google.com
+                  </a>
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    type="password"
+                    className="input"
+                    placeholder="Paste Gemini API key…"
+                    value={apiKeyInput}
+                    onChange={(e) => setApiKeyInput(e.target.value)}
+                    style={{ flex: 1, fontSize: 13 }}
+                  />
+                  <button
+                    className="btn"
+                    style={{ padding: "10px 16px", fontSize: 13, flexShrink: 0 }}
+                    onClick={saveApiKey}
+                  >
+                    Save & Interpret
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
