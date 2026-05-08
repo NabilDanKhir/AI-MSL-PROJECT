@@ -7,12 +7,16 @@ export async function POST(req: Request) {
     const { signs, apiKey } = await req.json();
 
     if (!Array.isArray(signs) || signs.length === 0) {
-      return NextResponse.json({ success: false, error: "No signs provided" });
+      return NextResponse.json({ success: false, error: "No signs provided" }, { status: 400 });
+    }
+
+    if (signs.some((s: unknown) => typeof s !== "string" || !s.trim())) {
+      return NextResponse.json({ success: false, error: "Invalid signs format" }, { status: 400 });
     }
 
     const key: string | undefined = process.env.GEMINI_API_KEY ?? apiKey;
     if (!key) {
-      return NextResponse.json({ success: false, error: "No API key configured" });
+      return NextResponse.json({ success: false, error: "No API key configured" }, { status: 500 });
     }
 
     const genAI = new GoogleGenerativeAI(key);
@@ -39,11 +43,23 @@ Rules:
     const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const parsed = JSON.parse(cleaned);
 
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      typeof parsed.malay !== "string" ||
+      typeof parsed.english !== "string" ||
+      !parsed.malay.trim() ||
+      !parsed.english.trim()
+    ) {
+      throw new Error("Gemini returned unexpected response format");
+    }
+
     return NextResponse.json({ success: true, malay: parsed.malay, english: parsed.english });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Interpretation failed";
     console.error("[interpret]", err);
     return NextResponse.json(
-      { success: false, error: err.message ?? "Interpretation failed" },
+      { success: false, error: message },
       { status: 500 }
     );
   }
