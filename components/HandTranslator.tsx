@@ -399,6 +399,8 @@ export default function HandTranslator() {
                   {(["both", "malay"] as const).map((mode) => (
                     <button
                       key={mode}
+                      type="button"
+                      aria-pressed={langMode === mode}
                       onClick={() => setLangMode(mode)}
                       style={{
                         padding: "5px 12px",
@@ -418,6 +420,7 @@ export default function HandTranslator() {
                 </div>
                 {/* Clear button */}
                 <button
+                  type="button"
                   onClick={clearInterpretation}
                   style={{
                     padding: "5px 12px",
@@ -439,7 +442,7 @@ export default function HandTranslator() {
 
             {/* Loading */}
             {isInterpreting && (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--muted)", fontSize: 14 }}>
+              <div role="status" aria-live="polite" style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--muted)", fontSize: 14 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: "spin 1s linear infinite", flexShrink: 0 }} aria-hidden="true">
                   <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                 </svg>
@@ -471,8 +474,9 @@ export default function HandTranslator() {
             {/* Error */}
             {!isInterpreting && interpretError && (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ fontSize: 13, color: "#fca5a5" }}>{interpretError}</span>
+                <span style={{ fontSize: 13, color: "#fca5a5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{interpretError}</span>
                 <button
+                  type="button"
                   onClick={interpret}
                   style={{
                     padding: "5px 12px",
@@ -508,11 +512,14 @@ export default function HandTranslator() {
                     placeholder="Paste Gemini API key…"
                     value={apiKeyInput}
                     onChange={(e) => setApiKeyInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") saveApiKey(); }}
                     style={{ flex: 1, fontSize: 13 }}
                   />
                   <button
+                    type="button"
                     className="btn"
                     style={{ padding: "10px 16px", fontSize: 13, flexShrink: 0 }}
+                    disabled={isInterpreting}
                     onClick={saveApiKey}
                   >
                     Save & Interpret
