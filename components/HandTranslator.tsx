@@ -27,6 +27,7 @@ export default function HandTranslator() {
   const modelInputCompatibleRef = useRef(true);
   const signQueueRef = useRef<string[]>([]);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInterpretingRef = useRef(false);
 
   const [output, setOutput] = useState("");
   const [isReady, setIsReady] = useState(false);
@@ -176,9 +177,9 @@ export default function HandTranslator() {
     if (stableCountRef.current >= 5) {
       setOutput(label);
       if (stableCountRef.current === 5) {
-        const queue = signQueueRef.current;
-        if (queue.length === 0 || queue[queue.length - 1] !== label) {
-          queue.push(label);
+        const q = signQueueRef.current;
+        if (q.length === 0 || q[q.length - 1] !== label) {
+          signQueueRef.current.push(label);
           if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
           debounceTimerRef.current = setTimeout(() => interpret(), 2000);
         }
@@ -187,13 +188,12 @@ export default function HandTranslator() {
   }
 
   async function interpret() {
-    if (signQueueRef.current.length === 0) return;
+    if (signQueueRef.current.length === 0 || isInterpretingRef.current) return;
+    isInterpretingRef.current = true;
     setIsInterpreting(true);
     setInterpretError(null);
 
-    const storedKey = typeof window !== "undefined"
-      ? localStorage.getItem("gemini_api_key") ?? undefined
-      : undefined;
+    const storedKey = localStorage.getItem("gemini_api_key") ?? undefined;
 
     try {
       const res = await fetch("/api/interpret", {
@@ -201,6 +201,9 @@ export default function HandTranslator() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ signs: signQueueRef.current, apiKey: storedKey }),
       });
+      if (!res.ok && !res.headers.get("content-type")?.includes("application/json")) {
+        throw new Error(`Server error ${res.status}`);
+      }
       const result = await res.json();
 
       if (result.success) {
@@ -213,9 +216,17 @@ export default function HandTranslator() {
       }
     } catch {
       setInterpretError("Network error. Check your connection.");
+    } finally {
+      isInterpretingRef.current = false;
+      setIsInterpreting(false);
     }
+  }
 
-    setIsInterpreting(false);
+  function saveApiKey() {
+    if (!apiKeyInput.trim()) return;
+    localStorage.setItem("gemini_api_key", apiKeyInput.trim());
+    setShowApiKeyInput(false);
+    interpret();
   }
 
   function clearInterpretation() {
