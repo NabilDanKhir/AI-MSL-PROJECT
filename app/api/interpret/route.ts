@@ -1,6 +1,5 @@
-// app/api/interpret/route.ts
 import { NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";
 
 export async function POST(req: Request) {
   try {
@@ -14,13 +13,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: "Invalid signs format" }, { status: 400 });
     }
 
-    const key: string | undefined = process.env.GEMINI_API_KEY ?? apiKey;
+    const key: string | undefined = process.env.GROQ_API_KEY ?? apiKey;
     if (!key) {
       return NextResponse.json({ success: false, error: "No API key configured" }, { status: 500 });
     }
 
-    const genAI = new GoogleGenerativeAI(key);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const client = new Groq({ apiKey: key });
 
     const prompt = `You are an interpreter for Malaysian Sign Language (MSL / Bahasa Isyarat Malaysia).
 
@@ -36,10 +34,13 @@ Rules:
 - Reply ONLY with valid JSON in this exact format, no markdown fences:
 {"malay": "...", "english": "..."}`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const completion = await client.chat.completions.create({
+      model: "llama-3.1-8b-instant",
+      max_tokens: 256,
+      messages: [{ role: "user", content: prompt }],
+    });
 
-    // Strip markdown code fences if Gemini wraps the JSON
+    const text = completion.choices[0]?.message?.content ?? "";
     const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const parsed = JSON.parse(cleaned);
 
@@ -51,7 +52,7 @@ Rules:
       !parsed.malay.trim() ||
       !parsed.english.trim()
     ) {
-      throw new Error("Gemini returned unexpected response format");
+      throw new Error("Unexpected response format");
     }
 
     return NextResponse.json({ success: true, malay: parsed.malay, english: parsed.english });

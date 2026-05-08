@@ -3,5 +3,33 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 32px 24px 48px;
+  padding: 40px 32px 56px;
+}
+
+.translator-layout {
+  display: flex;
+  gap: 28px;
+  width: 100%;
+  max-width: 1080px;
+  align-items: flex-start;
+}
+
+.translator-panel {
+  flex: 1;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@media (max-width: 960px) {
+  .translator-layout {
+    flex-direction: column;
+    align-items: center;
+    max-width: 640px;
+  }
+
+  .translator-panel {
+    width: 100%;
+  }
 }

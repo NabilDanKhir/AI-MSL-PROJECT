@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { extractTwoHandFeatures, SEQUENCE_LENGTH } from "@/lib/handFeatures.js";
 
 declare global {
   interface Window {
@@ -18,12 +19,15 @@ export default function HandRecognizer() {
 
   const recordingRef = useRef(false);
   const samplesRef = useRef<any[]>([]);
+  const frameBufferRef = useRef<number[][]>([]);
   const [currentLabel, setCurrentLabel] = useState("");
   const currentLabelRef = useRef("");
   const [status, setStatus] = useState<{ text: string; type: "idle" | "recording" | "stopped" | "saved" }>(
     { text: "Ready to record", type: "idle" }
   );
-  const [sampleCount, setSampleCount] = useState(0);
+  const [sequenceCount, setSequenceCount] = useState(0);
+  const [detectedHands, setDetectedHands] = useState(0);
+  const detectedHandsRef = useRef(0);
 
   const cameraStartedRef = useRef(false);
   const initStartedRef = useRef(false);
@@ -65,7 +69,7 @@ export default function HandRecognizer() {
     });
 
     handsRef.current.setOptions({
-      maxNumHands: 1,
+      maxNumHands: 2,
       modelComplexity: 1,
       minDetectionConfidence: 0.7,
       minTrackingConfidence: 0.7,
@@ -105,7 +109,15 @@ export default function HandRecognizer() {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (!results.multiHandLandmarks) return;
+    if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+      updateDetectedHands(0);
+      if (recordingRef.current) {
+        frameBufferRef.current = [];
+      }
+      return;
+    }
+
+    updateDetectedHands(results.multiHandLandmarks.length);
 
     for (const landmarks of results.multiHandLandmarks) {
       window.drawConnectors(ctx, landmarks, window.HAND_CONNECTIONS, {
@@ -117,15 +129,27 @@ export default function HandRecognizer() {
         lineWidth: 1,
         radius: 3,
       });
+    }
 
-      if (recordingRef.current) {
+    if (recordingRef.current) {
+      const { features } = extractTwoHandFeatures(results);
+      frameBufferRef.current.push(features);
+
+      if (frameBufferRef.current.length === SEQUENCE_LENGTH) {
         samplesRef.current.push({
           label: currentLabelRef.current,
-          landmarks: landmarks.flatMap((p: any) => [p.x, p.y, p.z]),
+          sequence: [...frameBufferRef.current],
         });
-        setSampleCount(samplesRef.current.length);
+        frameBufferRef.current = [];
+        setSequenceCount(samplesRef.current.length);
       }
     }
+  }
+
+  function updateDetectedHands(count: number) {
+    if (detectedHandsRef.current === count) return;
+    detectedHandsRef.current = count;
+    setDetectedHands(count);
   }
 
   async function saveSessionLabel(label: string) {
@@ -188,11 +212,23 @@ export default function HandRecognizer() {
           </div>
         </div>
 
+        <div>
+          <h3>Detected Hands</h3>
+          <div style={{ fontSize: 22, fontWeight: 700, color: detectedHands === 2 ? "var(--accent)" : "var(--muted)", marginTop: 4 }}>
+            {detectedHands} / 2
+          </div>
+          {status.type === "recording" && detectedHands < 2 && (
+            <div style={{ color: "#fca5a5", fontSize: 12, marginTop: 6, lineHeight: 1.4 }}>
+              Keep both hands visible for BIM samples.
+            </div>
+          )}
+        </div>
+
         {samplesRef.current.length > 0 && (
           <div>
-            <h3>Samples Captured</h3>
+            <h3>Sequences Captured</h3>
             <div style={{ fontSize: 22, fontWeight: 700, color: "var(--accent)", marginTop: 4 }}>
-              {sampleCount}
+              {sequenceCount}
             </div>
           </div>
         )}
@@ -259,7 +295,8 @@ export default function HandRecognizer() {
                 return;
               }
               samplesRef.current = [];
-              setSampleCount(0);
+              frameBufferRef.current = [];
+              setSequenceCount(0);
               recordingRef.current = true;
               setStatus({ text: "Recording…", type: "recording" });
             }}
@@ -274,7 +311,7 @@ export default function HandRecognizer() {
             className="btn btn-danger"
             onClick={() => {
               recordingRef.current = false;
-              setStatus({ text: `Stopped — ${samplesRef.current.length} samples`, type: "stopped" });
+              setStatus({ text: `Stopped — ${samplesRef.current.length} sequences`, type: "stopped" });
             }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -298,7 +335,7 @@ export default function HandRecognizer() {
               });
 
               if (res.ok) {
-                setStatus({ text: `Saved ${samplesRef.current.length} samples`, type: "saved" });
+                setStatus({ text: `Saved ${samplesRef.current.length} sequences`, type: "saved" });
               } else {
                 alert("Failed to save dataset");
               }

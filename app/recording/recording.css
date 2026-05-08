@@ -1,6 +1,6 @@
 .recording-main {
   flex: 1;
-  padding: 32px;
+  padding: 40px 32px 56px;
   display: flex;
   justify-content: center;
 }

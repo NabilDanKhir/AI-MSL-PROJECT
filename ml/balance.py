@@ -4,7 +4,9 @@ from collections import defaultdict
 import math
 
 INPUT_FILE = "dataset_dirty.json"
-OUTPUT_FILE = "dataset_clean.json"
+OUTPUT_FILE = "../public/dataset_clean.json"
+SEQUENCE_LENGTH = 30
+FEATURE_COUNT = 126
 
 # ---------- LOAD ----------
 with open(INPUT_FILE, "r", encoding="utf-8") as f:
@@ -16,39 +18,29 @@ print("Loaded:", len(raw), "samples")
 cleaned = []
 dropped = 0
 
-def is_valid_landmarks(lm):
-    if not isinstance(lm, list) or len(lm) != 63:
+def is_valid(seq):
+    if not isinstance(seq, list) or len(seq) != SEQUENCE_LENGTH:
         return False
-    for v in lm:
-        if not isinstance(v, (int, float)) or not math.isfinite(v):
+    for frame in seq:
+        if not isinstance(frame, list) or len(frame) != FEATURE_COUNT:
             return False
+        for v in frame:
+            if not isinstance(v, (int, float)) or not math.isfinite(v):
+                return False
     return True
 
-def normalize(lm):
-    bx, by, bz = lm[0], lm[1], lm[2]  # wrist
-    out = []
-    for i in range(0, 63, 3):
-        out.extend([
-            lm[i]   - bx,
-            lm[i+1] - by,
-            lm[i+2] - bz
-        ])
-    return out
-
 for item in raw:
-    if "label" not in item or "landmarks" not in item:
+    if "label" not in item or "sequence" not in item:
         dropped += 1
         continue
 
-    lm = item["landmarks"]
-
-    if not is_valid_landmarks(lm):
+    if not is_valid(item["sequence"]):
         dropped += 1
         continue
 
     cleaned.append({
         "label": item["label"],
-        "landmarks": normalize(lm)
+        "sequence": item["sequence"],
     })
 
 print("Cleaned:", len(cleaned))
@@ -76,5 +68,5 @@ random.shuffle(balanced)
 with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
     json.dump(balanced, f, indent=2)
 
-print("\n✅ dataset_clean.json overwritten successfully")
+print("\nDone. dataset_clean.json overwritten successfully")
 print("Final samples:", len(balanced))
