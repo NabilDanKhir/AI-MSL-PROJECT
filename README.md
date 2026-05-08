@@ -14,15 +14,15 @@ The system applies AI in three layers:
 
 2. **Sign classification** — A custom-trained TensorFlow.js LSTM neural network classifies sequences of 30 frames into BIM sign categories, using wrist-relative normalization for translation and scale invariance. A confidence threshold (≥85%) and frame-stability filter (5 consecutive matching frames) reduce noise.
 
-3. **AI agent interpretation** — An intelligent agent module maintains a temporal sign buffer, detects natural signing pauses, and maps accumulated sign sequences to grammatically natural Malay sentences via an LLM. Each interpretation is independent with no multi-turn context.
+3. **Rule-based sentence assembly** — A local sign agent maintains a temporal sign buffer and detects natural signing pauses (2-second timeout). Accumulated signs are mapped to grammatically natural Malay and English sentences using a rule-based sentence builder with subject/action/state/auxiliary grammar. No external API or LLM is required. User-provided corrections are stored in localStorage and override future interpretations for the same sign sequence.
 
 The system is trained on a self-recorded BIM dataset validated against the official BIM SignBank reference maintained by the Malaysian Federation of the Deaf (MFD).
 
 ## Features
 
-**Live Translation** (`/translate`) — Point your webcam at your hand. Signs are detected in real time and accumulated silently. After a 2-second pause, the AI agent interprets the sign sequence into a complete Malay sentence with English translation.
+**Live Translation** (`/translate`) — Point your webcam at your hand. Signs are detected in real time and accumulated silently. After a 2-second pause, the agent assembles the sign sequence into a complete Malay sentence with English translation. A debug mode shows per-frame confidence and hand count. Interpretations can be corrected inline using the format `Malay correction | English correction` — corrections are saved locally and applied on the next matching sequence.
 
-**Record Dataset** (`/recording`) — Collect training data. Enter a label (e.g. `Makan`), press Start Recording, hold the sign in front of your webcam, then Stop and Save. Landmark coordinates are captured per frame and saved to `dataset_dirty.json`.
+**Record Dataset** (`/recording`) — Collect training data. Enter a label (e.g. `Makan`), press Start Recording, hold the sign in front of your webcam, then Stop and Save. Landmark coordinates are captured per frame and saved to `ml/dataset_dirty.json`.
 
 **Train Model** (`/train`) — Trains the LSTM in the browser on your collected dataset. Uses an 80/20 train/val split, early stopping (patience=10), and saves the best-performing weights to `public/model/`.
 
@@ -34,18 +34,20 @@ The system is trained on a self-recorded BIM dataset validated against the offic
 | Mahu | Want |
 | Makan | Eat |
 | Minum | Drink |
-| Baik | Good |
-| Tak Baik | Not Good |
+| Baik | Good / Fine |
+| Tak Baik | Not Well / Not Good |
 | Demam | Fever |
 | Senyap | Quiet |
 | Waktu | Time |
+
+`UNKNOWN` is an internal class used during training to reject low-confidence or ambiguous gestures — it is not a translatable sign.
 
 ## Model Architecture
 
 Input: 126 features per frame (21 landmarks × XYZ × 2 hands), 30-frame sequences
 
 ```
-LSTM(64) → Dense(64, relu) → Dropout(0.3) → Dense(9, softmax)
+LSTM(64) → Dense(64, relu) → Dropout(0.3) → Dense(11, softmax)
 ```
 
 Optimizer: Adam (lr=0.001), loss: categorical crossentropy, 100 epochs max with early stopping (patience=10).
@@ -55,8 +57,7 @@ Optimizer: Adam (lr=0.001), loss: categorical crossentropy, 100 epochs max with 
 - **Next.js 16** + **React 19** + **TypeScript**
 - **TensorFlow.js** — LSTM model training and inference, fully in-browser
 - **MediaPipe Hands** — real-time 2-hand landmark detection
-- **Groq API (Llama 3)** — AI agent sign-to-sentence interpretation
-- **Python** (`balance.py`) — dataset cleaning and class balancing
+- **Python** (`ml/balance.py`) — dataset cleaning and class balancing
 
 ## Getting Started
 
@@ -67,13 +68,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). Allow camera access when prompted.
 
-A pre-trained model is included in `public/model/` so Live Translation works immediately.
-
-To enable AI agent interpretation, add your Groq API key (free at [console.groq.com](https://console.groq.com)) to `.env.local`:
-
-```
-GROQ_API_KEY=gsk_...
-```
+A pre-trained model is included in `public/model/` so Live Translation works immediately. No API key is required.
 
 ### Training your own model
 

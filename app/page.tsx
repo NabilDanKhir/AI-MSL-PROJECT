@@ -15,24 +15,14 @@ export default function HomePage() {
         </div>
 
         <h1 className="hero-h1">
-          BIM-Translate<br />
-          <span className="hero-accent">Real-Time</span> BIM Recognition
+          BIM-Translate: <br />
+          <span className="hero-accent">Real-Time</span> Malaysian Sign Language Recognition
         </h1>
 
         <p className="hero-sub">
           A real-time Bahasa Isyarat Malaysia (BIM) recognition system that converts hand gestures into
-          natural Malay text — accessible in any browser, no special hardware required.
+          natural Malay and English text — accessible in any browser, no special hardware required.
         </p>
-
-        <div className="hero-tech-stack">
-          <span>MediaPipe</span>
-          <span className="hero-tech-dot" />
-          <span>TensorFlow.js</span>
-          <span className="hero-tech-dot" />
-          <span>AI Agent</span>
-          <span className="hero-tech-dot" />
-          <span>Next.js</span>
-        </div>
 
         <div className="hero-btns">
           <Link href="/translate">
