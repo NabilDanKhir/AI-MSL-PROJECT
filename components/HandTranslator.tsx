@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as tf from "@tensorflow/tfjs";
 import LABELS from "@/lib/labels.json";
+import { extractTwoHandFeatures, HAND_FEATURE_COUNT, SEQUENCE_LENGTH } from "@/lib/handFeatures.js";
 
 declare global {
   interface Window {
@@ -21,15 +22,35 @@ export default function HandTranslator() {
 
   const lastLabelRef = useRef("Waiting...");
   const stableCountRef = useRef(0);
+  const frameWindowRef = useRef<number[][]>([]);
   const initStartedRef = useRef(false);
+  const modelInputCompatibleRef = useRef(true);
+  const signQueueRef = useRef<string[]>([]);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [output, setOutput] = useState("");
   const [isReady, setIsReady] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [modelError, setModelError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<{ label: string; confidence: number; handCount: number } | null>(null);
+  const [debugMode, setDebugMode] = useState(false);
+  const [interpretation, setInterpretation] = useState<{ malay: string; english: string } | null>(null);
+  const [isInterpreting, setIsInterpreting] = useState(false);
+  const [interpretError, setInterpretError] = useState<string | null>(null);
+  const [langMode, setLangMode] = useState<"both" | "malay">("both");
+  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState("");
 
   useEffect(() => {
     if (initStartedRef.current) return;
     initStartedRef.current = true;
     loadScripts().then(init);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
   }, []);
 
   async function loadScripts() {
@@ -48,6 +69,14 @@ export default function HandTranslator() {
 
   async function init() {
     modelRef.current = await tf.loadLayersModel("/model/model.json");
+    const inputShape = modelRef.current.inputs[0]?.shape ?? [];
+    const featureCount = inputShape[inputShape.length - 1];
+    modelInputCompatibleRef.current = featureCount === HAND_FEATURE_COUNT;
+    if (!modelInputCompatibleRef.current) {
+      setModelError(
+        `Current model expects ${featureCount ?? "unknown"} features per frame. Retrain with ${HAND_FEATURE_COUNT}-feature two-hand data.`
+      );
+    }
 
     handsRef.current = new window.Hands({
       locateFile: (file: string) =>
@@ -55,7 +84,7 @@ export default function HandTranslator() {
     });
 
     handsRef.current.setOptions({
-      maxNumHands: 1,
+      maxNumHands: 2,
       modelComplexity: 1,
       minDetectionConfidence: 0.7,
       minTrackingConfidence: 0.7,
@@ -67,11 +96,16 @@ export default function HandTranslator() {
 
   async function startCamera() {
     if (!videoRef.current) return;
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    videoRef.current.srcObject = stream;
-    await videoRef.current.play();
-    setIsReady(true);
-    requestAnimationFrame(processFrame);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      setIsReady(true);
+      requestAnimationFrame(processFrame);
+    } catch (err) {
+      console.error("Camera start failed:", err);
+      setCameraError("Camera access denied or unavailable.");
+    }
   }
 
   async function processFrame() {
@@ -91,39 +125,40 @@ export default function HandTranslator() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+      frameWindowRef.current = [];
       stableCountRef.current = 0;
       setOutput("");
+      setDebugInfo(null);
       return;
     }
 
-    const landmarks = results.multiHandLandmarks[0];
+    const { features, handCount } = extractTwoHandFeatures(results);
 
-    window.drawConnectors(ctx, landmarks, window.HAND_CONNECTIONS, {
-      color: "rgba(34,197,94,0.9)",
-      lineWidth: 2,
-    });
-    window.drawLandmarks(ctx, landmarks, {
-      color: "rgba(134,239,172,1)",
-      lineWidth: 1,
-      radius: 3,
-    });
+    frameWindowRef.current.push(features);
+    if (frameWindowRef.current.length > SEQUENCE_LENGTH) {
+      frameWindowRef.current.shift();
+    }
 
-    const base = landmarks[0];
-    const flat = landmarks.flatMap((p: any) => [
-      p.x - base.x,
-      p.y - base.y,
-      p.z - base.z,
-    ]);
+    if (frameWindowRef.current.length !== SEQUENCE_LENGTH) return;
+    if (!modelInputCompatibleRef.current) return;
 
-    const input = tf.tensor([flat]);
-    const pred = modelRef.current!.predict(input) as tf.Tensor;
-    const scores = Array.from(pred.dataSync());
-    tf.dispose([input, pred]);
+    let scores: number[];
+    try {
+      const input = tf.tensor3d([frameWindowRef.current], [1, SEQUENCE_LENGTH, HAND_FEATURE_COUNT]);
+      const pred = modelRef.current!.predict(input) as tf.Tensor;
+      scores = Array.from(pred.dataSync());
+      tf.dispose([input, pred]);
+    } catch (e) {
+      console.error("[predict]", e);
+      return;
+    }
 
     const maxScore = Math.max(...scores);
     const index = scores.indexOf(maxScore);
     const CONFIDENCE_THRESHOLD = 0.85;
     const label = LABELS[index];
+
+    setDebugInfo({ label, confidence: maxScore, handCount });
 
     if (maxScore < CONFIDENCE_THRESHOLD || label === "UNKNOWN") {
       stableCountRef.current = 0;
@@ -140,12 +175,62 @@ export default function HandTranslator() {
 
     if (stableCountRef.current >= 5) {
       setOutput(label);
+      if (stableCountRef.current === 5) {
+        const queue = signQueueRef.current;
+        if (queue.length === 0 || queue[queue.length - 1] !== label) {
+          queue.push(label);
+          if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+          debounceTimerRef.current = setTimeout(() => interpret(), 2000);
+        }
+      }
     }
   }
 
+  async function interpret() {
+    if (signQueueRef.current.length === 0) return;
+    setIsInterpreting(true);
+    setInterpretError(null);
+
+    const storedKey = typeof window !== "undefined"
+      ? localStorage.getItem("gemini_api_key") ?? undefined
+      : undefined;
+
+    try {
+      const res = await fetch("/api/interpret", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ signs: signQueueRef.current, apiKey: storedKey }),
+      });
+      const result = await res.json();
+
+      if (result.success) {
+        setInterpretation({ malay: result.malay, english: result.english });
+        setShowApiKeyInput(false);
+      } else if (result.error === "No API key configured") {
+        setShowApiKeyInput(true);
+      } else {
+        setInterpretError(result.error ?? "Interpretation failed.");
+      }
+    } catch {
+      setInterpretError("Network error. Check your connection.");
+    }
+
+    setIsInterpreting(false);
+  }
+
+  function clearInterpretation() {
+    signQueueRef.current = [];
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    setInterpretation(null);
+    setIsInterpreting(false);
+    setInterpretError(null);
+    setShowApiKeyInput(false);
+  }
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
-      <div className={`camera-wrapper ${isReady ? "active" : ""}`} style={{ width: 640, height: 480 }}>
+    <div className="translator-layout">
+      {/* Camera — fixed width column */}
+      <div className={`camera-wrapper ${isReady ? "active" : ""}`} style={{ width: 640, height: 480, flexShrink: 0 }}>
         <video
           ref={videoRef}
           width={640}
@@ -162,18 +247,47 @@ export default function HandTranslator() {
         />
       </div>
 
-      <div style={{
-        width: 640,
-        background: "var(--glass-bg)",
-        border: "1px solid var(--border-2)",
-        borderRadius: "var(--radius-lg)",
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
-        padding: "24px 32px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-      }}>
+      {/* Right panel */}
+      <div className="translator-panel">
+        {cameraError && (
+          <div style={{
+            padding: "12px 16px",
+            borderRadius: "var(--radius)",
+            background: "rgba(239,68,68,0.08)",
+            border: "1px solid rgba(239,68,68,0.28)",
+            color: "#fca5a5",
+            fontSize: 14,
+            fontWeight: 600,
+          }}>
+            {cameraError}
+          </div>
+        )}
+
+        {modelError && (
+          <div style={{
+            padding: "12px 16px",
+            borderRadius: "var(--radius)",
+            background: "rgba(245,158,11,0.08)",
+            border: "1px solid rgba(245,158,11,0.28)",
+            color: "#fbbf24",
+            fontSize: 14,
+            fontWeight: 600,
+          }}>
+            {modelError}
+          </div>
+        )}
+
+        <div style={{
+          background: "var(--glass-bg)",
+          border: "1px solid var(--border-2)",
+          borderRadius: "var(--radius-lg)",
+          backdropFilter: "blur(16px)",
+          WebkitBackdropFilter: "blur(16px)",
+          padding: "24px 32px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}>
         <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--muted)" }}>
           Detected Sign
         </span>
@@ -189,11 +303,66 @@ export default function HandTranslator() {
         }}>
           {output || (isReady ? "Show a sign…" : "Loading model…")}
         </div>
-        {output && (
-          <span style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
-            Hold steadily for stable detection
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
+          {output ? (
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>
+              Hold steadily for stable detection
+            </span>
+          ) : <span />}
+
+          <button
+            onClick={() => setDebugMode((v) => !v)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              fontSize: 12,
+              color: "var(--muted)",
+              userSelect: "none",
+            }}
+            aria-pressed={debugMode}
+          >
+            <span style={{
+              width: 32,
+              height: 18,
+              borderRadius: 999,
+              background: debugMode ? "var(--accent)" : "var(--border)",
+              position: "relative",
+              display: "inline-block",
+              transition: "background 150ms ease",
+              flexShrink: 0,
+            }}>
+              <span style={{
+                position: "absolute",
+                top: 3,
+                left: debugMode ? 17 : 3,
+                width: 12,
+                height: 12,
+                borderRadius: "50%",
+                background: "#fff",
+                transition: "left 150ms ease",
+              }} />
+            </span>
+            Debug mode
+          </button>
+        </div>
+
+        {debugMode && debugInfo && (
+          <span style={{ fontSize: 12, color: "var(--muted)", fontFamily: "monospace" }}>
+            hands: <span style={{ color: "var(--text)" }}>{debugInfo.handCount}/2</span>
+            {" · "}
+            top: <span style={{ color: "var(--text)" }}>{debugInfo.label}</span>
+            {" · "}
+            <span style={{ color: debugInfo.confidence >= 0.85 ? "var(--accent)" : "#fca5a5" }}>
+              {(debugInfo.confidence * 100).toFixed(1)}%
+            </span>
           </span>
         )}
+        </div>
       </div>
     </div>
   );
