@@ -17,8 +17,8 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "MSL Real-Time — Sign Language Recognition",
-  description: "Real-time Malaysian Sign Language recognition powered by MediaPipe and TensorFlow.js",
+  title: "BIM-Translate — Real-Time Malaysian Sign Language Recognition",
+  description: "Real-time Bahasa Isyarat Malaysia (BIM) recognition and AI agent translation system, powered by MediaPipe, TensorFlow.js, and an intelligent sign interpretation agent.",
 };
 
 export default function RootLayout({

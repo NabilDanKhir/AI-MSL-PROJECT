@@ -181,7 +181,7 @@ export default function HandTranslator() {
         if (q.length === 0 || q[q.length - 1] !== label) {
           signQueueRef.current.push(label);
           if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-          debounceTimerRef.current = setTimeout(() => interpret(), 2000);
+          debounceTimerRef.current = setTimeout(() => interpret(), 4000);
         }
       }
     }

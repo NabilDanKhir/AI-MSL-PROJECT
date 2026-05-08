@@ -12,8 +12,8 @@ export default function TranslatePage() {
           </svg>
           Back
         </Link>
-        <span className="topbar-title">Live Translation</span>
-        <span className="topbar-logo">MSL</span>
+        <span className="topbar-title">BIM-Translate</span>
+        <span className="topbar-logo">BIM</span>
       </nav>
 
       <main className="translate-main">

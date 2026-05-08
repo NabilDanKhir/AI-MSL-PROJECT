@@ -15,19 +15,21 @@ export default function HomePage() {
         </div>
 
         <h1 className="hero-h1">
-          Malaysian Sign Language<br />
-          <span className="hero-accent">Real-Time</span> Recognition
+          BIM-Translate<br />
+          <span className="hero-accent">Real-Time</span> BIM Recognition
         </h1>
 
         <p className="hero-sub">
-          Detect and translate hand gestures instantly using your webcam.
-          Powered by MediaPipe hand tracking and a custom TensorFlow.js model.
+          A real-time Bahasa Isyarat Malaysia (BIM) recognition system that converts hand gestures into
+          natural Malay text — accessible in any browser, no special hardware required.
         </p>
 
         <div className="hero-tech-stack">
           <span>MediaPipe</span>
           <span className="hero-tech-dot" />
           <span>TensorFlow.js</span>
+          <span className="hero-tech-dot" />
+          <span>AI Agent</span>
           <span className="hero-tech-dot" />
           <span>Next.js</span>
         </div>
@@ -64,7 +66,7 @@ export default function HomePage() {
         </div>
 
         <p className="hero-footer-text">
-          AI Project · Real-Time MSL Recognition System
+          Final Year Project · Real-Time BIM Recognition &amp; AI Agent Translation
         </p>
       </div>
     </main>

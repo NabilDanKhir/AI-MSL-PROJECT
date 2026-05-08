@@ -224,7 +224,7 @@ export default function TrainPage() {
           Back
         </Link>
         <span className="topbar-title">Train Model</span>
-        <span className="topbar-logo">MSL</span>
+        <span className="topbar-logo">BIM</span>
       </nav>
 
       <main className="train-main">

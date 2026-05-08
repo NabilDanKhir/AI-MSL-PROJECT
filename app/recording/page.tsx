@@ -13,7 +13,7 @@ export default function RecordingPage() {
           Back
         </Link>
         <span className="topbar-title">Record Dataset</span>
-        <span className="topbar-logo">MSL</span>
+        <span className="topbar-logo">BIM</span>
       </nav>
 
       <main className="recording-main">
