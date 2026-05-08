@@ -3,21 +3,37 @@
 import { useEffect, useRef, useState } from "react";
 import * as tf from "@tensorflow/tfjs";
 import LABELS from "@/lib/labels.json";
+import { SignAgent } from "@/lib/agent";
 import { extractTwoHandFeatures, HAND_FEATURE_COUNT, SEQUENCE_LENGTH } from "@/lib/handFeatures.js";
+import { parseTranslationCorrection, saveTranslationFeedback } from "@/lib/translationFeedback";
 
-declare global {
-  interface Window {
-    Hands: any;
-    drawConnectors: any;
-    drawLandmarks: any;
-    HAND_CONNECTIONS: any;
-  }
-}
+type HandLandmark = {
+  x: number;
+  y: number;
+  z?: number;
+};
+
+type HandResults = {
+  multiHandLandmarks?: HandLandmark[][];
+};
+
+type MediaPipeHands = {
+  setOptions: (options: {
+    maxNumHands: number;
+    modelComplexity: number;
+    minDetectionConfidence: number;
+    minTrackingConfidence: number;
+  }) => void;
+  onResults: (callback: (results: HandResults) => void) => void;
+  send: (input: { image: HTMLVideoElement }) => Promise<void> | void;
+};
+
+type MediaPipeHandsConstructor = new (config: { locateFile: (file: string) => string }) => MediaPipeHands;
 
 export default function HandTranslator() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const handsRef = useRef<any>(null);
+  const handsRef = useRef<MediaPipeHands | null>(null);
   const modelRef = useRef<tf.LayersModel | null>(null);
 
   const lastLabelRef = useRef("Waiting...");
@@ -26,8 +42,7 @@ export default function HandTranslator() {
   const initStartedRef = useRef(false);
   const modelInputCompatibleRef = useRef(true);
   const signQueueRef = useRef<string[]>([]);
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isInterpretingRef = useRef(false);
+  const agentRef = useRef<SignAgent | null>(null);
   const mountedRef = useRef(true);
 
   const [output, setOutput] = useState("");
@@ -37,29 +52,11 @@ export default function HandTranslator() {
   const [debugInfo, setDebugInfo] = useState<{ label: string; confidence: number; handCount: number } | null>(null);
   const [debugMode, setDebugMode] = useState(false);
   const [interpretation, setInterpretation] = useState<{ malay: string; english: string } | null>(null);
-  const [isInterpreting, setIsInterpreting] = useState(false);
-  const [interpretError, setInterpretError] = useState<string | null>(null);
   const [langMode, setLangMode] = useState<"both" | "malay">("both");
-  const [showApiKeyInput, setShowApiKeyInput] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState("");
-
-  useEffect(() => {
-    if (initStartedRef.current) return;
-    initStartedRef.current = true;
-    loadScripts().then(init);
-  }, []);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-      if (videoRef.current?.srcObject) {
-        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-        videoRef.current.srcObject = null;
-      }
-    };
-  }, []);
+  const [signBuffer, setSignBuffer] = useState<string[]>([]);
+  const [lastInterpretedSigns, setLastInterpretedSigns] = useState<string[]>([]);
+  const [correctionText, setCorrectionText] = useState("");
+  const [feedbackSaved, setFeedbackSaved] = useState(false);
 
   async function loadScripts() {
     const load = (src: string) =>
@@ -86,19 +83,21 @@ export default function HandTranslator() {
       );
     }
 
-    handsRef.current = new window.Hands({
+    const Hands = window.Hands as MediaPipeHandsConstructor;
+    const hands = new Hands({
       locateFile: (file: string) =>
         `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
     });
 
-    handsRef.current.setOptions({
+    hands.setOptions({
       maxNumHands: 2,
       modelComplexity: 1,
       minDetectionConfidence: 0.7,
       minTrackingConfidence: 0.7,
     });
 
-    handsRef.current.onResults(onResults);
+    hands.onResults(onResults);
+    handsRef.current = hands;
     startCamera();
   }
 
@@ -124,7 +123,7 @@ export default function HandTranslator() {
     if (mountedRef.current) requestAnimationFrame(processFrame);
   }
 
-  function onResults(results: any) {
+  function onResults(results: HandResults) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -138,6 +137,7 @@ export default function HandTranslator() {
       stableCountRef.current = 0;
       setOutput("");
       setDebugInfo(null);
+      agentRef.current?.update(null);
       return;
     }
 
@@ -172,6 +172,7 @@ export default function HandTranslator() {
     if (maxScore < CONFIDENCE_THRESHOLD || label === "UNKNOWN") {
       stableCountRef.current = 0;
       setOutput("");
+      agentRef.current?.update(null);
       return;
     }
 
@@ -188,63 +189,67 @@ export default function HandTranslator() {
         const q = signQueueRef.current;
         if (q.length === 0 || q[q.length - 1] !== label) {
           signQueueRef.current.push(label);
-          if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-          debounceTimerRef.current = setTimeout(() => interpret(), 4000);
         }
+        agentRef.current?.update(label);
       }
     }
-  }
-
-  async function interpret() {
-    if (signQueueRef.current.length === 0 || isInterpretingRef.current) return;
-    isInterpretingRef.current = true;
-    setIsInterpreting(true);
-    setInterpretError(null);
-
-    const storedKey = localStorage.getItem("gemini_api_key") ?? undefined;
-
-    try {
-      const res = await fetch("/api/interpret", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signs: signQueueRef.current, apiKey: storedKey }),
-      });
-      if (!res.ok && !res.headers.get("content-type")?.includes("application/json")) {
-        throw new Error(`Server error ${res.status}`);
-      }
-      const result = await res.json();
-
-      if (result.success) {
-        setInterpretation({ malay: result.malay, english: result.english });
-        setShowApiKeyInput(false);
-      } else if (result.error === "No API key configured") {
-        setShowApiKeyInput(true);
-      } else {
-        setInterpretError(result.error ?? "Interpretation failed.");
-      }
-    } catch {
-      setInterpretError("Network error. Check your connection.");
-    } finally {
-      isInterpretingRef.current = false;
-      setIsInterpreting(false);
-    }
-  }
-
-  function saveApiKey() {
-    if (!apiKeyInput.trim()) return;
-    localStorage.setItem("gemini_api_key", apiKeyInput.trim());
-    setShowApiKeyInput(false);
-    interpret();
   }
 
   function clearInterpretation() {
     signQueueRef.current = [];
-    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    agentRef.current?.reset();
     setInterpretation(null);
-    setIsInterpreting(false);
-    setInterpretError(null);
-    setShowApiKeyInput(false);
+    setLastInterpretedSigns([]);
+    setCorrectionText("");
+    setFeedbackSaved(false);
   }
+
+  function saveCorrection() {
+    if (!interpretation || lastInterpretedSigns.length === 0 || !parseTranslationCorrection(correctionText)) return;
+
+    saveTranslationFeedback({
+      signs: lastInterpretedSigns,
+      generated: interpretation,
+      correction: correctionText,
+    });
+    setCorrectionText("");
+    setFeedbackSaved(true);
+  }
+
+  const correctionIsValid = parseTranslationCorrection(correctionText) !== null;
+
+  useEffect(() => {
+    if (initStartedRef.current) return;
+    initStartedRef.current = true;
+    loadScripts().then(init);
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    agentRef.current = new SignAgent(
+      (result, signs) => {
+        if (!mountedRef.current) return;
+        setInterpretation(result);
+        setLastInterpretedSigns(signs);
+        setCorrectionText("");
+        setFeedbackSaved(false);
+      },
+      (buffer) => {
+        if (mountedRef.current) setSignBuffer(buffer);
+      }
+    );
+
+    return () => {
+      const video = videoRef.current;
+
+      mountedRef.current = false;
+      agentRef.current?.reset();
+      if (video?.srcObject) {
+        (video.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+        video.srcObject = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="translator-layout">
@@ -383,8 +388,7 @@ export default function HandTranslator() {
         )}
         </div>
 
-        {/* Interpretation panel */}
-        {(isInterpreting || interpretation || interpretError || showApiKeyInput) && (
+        {(signBuffer.length > 0 || interpretation) && (
           <div style={{
             background: "var(--glass-bg)",
             border: "1px solid var(--border-2)",
@@ -448,18 +452,30 @@ export default function HandTranslator() {
               </div>
             </div>
 
-            {/* Loading */}
-            {isInterpreting && (
-              <div role="status" aria-live="polite" style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--muted)", fontSize: 14 }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: "spin 1s linear infinite", flexShrink: 0 }} aria-hidden="true">
-                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                </svg>
-                Interpreting…
+            {signBuffer.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {signBuffer.map((sign, index) => (
+                  <span
+                    key={`${sign}-${index}`}
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: "var(--radius)",
+                      border: "1px solid var(--border-2)",
+                      color: "var(--text)",
+                      background: "rgba(255,255,255,0.04)",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      fontFamily: "var(--font-heading, 'Space Grotesk', sans-serif)",
+                    }}
+                  >
+                    {sign}
+                  </span>
+                ))}
               </div>
             )}
 
             {/* Result */}
-            {!isInterpreting && interpretation && (
+            {interpretation && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{
                   fontSize: 24,
@@ -479,58 +495,63 @@ export default function HandTranslator() {
               </div>
             )}
 
-            {/* Error */}
-            {!isInterpreting && interpretError && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ fontSize: 13, color: "#fca5a5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{interpretError}</span>
-                <button
-                  type="button"
-                  onClick={interpret}
+            {interpretation && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <label
+                  htmlFor="translation-correction"
                   style={{
-                    padding: "5px 12px",
-                    background: "transparent",
-                    border: "1px solid rgba(239,68,68,0.28)",
-                    borderRadius: "var(--radius)",
-                    color: "#fca5a5",
                     fontSize: 12,
+                    color: "var(--muted)",
                     fontWeight: 700,
-                    cursor: "pointer",
-                    fontFamily: "var(--font-heading, 'Space Grotesk', sans-serif)",
-                    flexShrink: 0,
                   }}
                 >
-                  Retry
-                </button>
-              </div>
-            )}
-
-            {/* API key input */}
-            {showApiKeyInput && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                  No Gemini API key found. Get one free at{" "}
-                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
-                    aistudio.google.com
-                  </a>
-                </span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    type="password"
-                    className="input"
-                    placeholder="Paste Gemini API key…"
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") saveApiKey(); }}
-                    style={{ flex: 1, fontSize: 13 }}
-                  />
+                  Not accurate translation? Write it
+                </label>
+                <textarea
+                  id="translation-correction"
+                  value={correctionText}
+                  onChange={(event) => {
+                    setCorrectionText(event.target.value);
+                    setFeedbackSaved(false);
+                  }}
+                  placeholder="Malay correction | English correction"
+                  rows={3}
+                  style={{
+                    width: "100%",
+                    resize: "vertical",
+                    minHeight: 72,
+                    borderRadius: "var(--radius)",
+                    border: "1px solid var(--border-2)",
+                    background: "rgba(255,255,255,0.04)",
+                    color: "var(--text)",
+                    padding: "10px 12px",
+                    fontSize: 13,
+                    fontFamily: "inherit",
+                    lineHeight: 1.4,
+                  }}
+                />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <span style={{ fontSize: 12, color: feedbackSaved ? "var(--accent)" : "var(--muted)" }}>
+                    {feedbackSaved ? "Saved for future translation training." : "Use: Malay correction | English correction"}
+                  </span>
                   <button
                     type="button"
-                    className="btn"
-                    style={{ padding: "10px 16px", fontSize: 13, flexShrink: 0 }}
-                    disabled={isInterpreting}
-                    onClick={saveApiKey}
+                    onClick={saveCorrection}
+                    disabled={!correctionIsValid}
+                    style={{
+                      padding: "6px 12px",
+                      background: correctionIsValid ? "var(--accent)" : "transparent",
+                      border: "1px solid var(--border-2)",
+                      borderRadius: "var(--radius)",
+                      color: correctionIsValid ? "#0a1628" : "var(--muted)",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: correctionIsValid ? "pointer" : "not-allowed",
+                      fontFamily: "var(--font-heading, 'Space Grotesk', sans-serif)",
+                      flexShrink: 0,
+                    }}
                   >
-                    Save & Interpret
+                    Save correction
                   </button>
                 </div>
               </div>
