@@ -31,6 +31,7 @@ export default function HandRecognizer() {
 
   const cameraStartedRef = useRef(false);
   const initStartedRef = useRef(false);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     if (initStartedRef.current) return;
@@ -39,10 +40,12 @@ export default function HandRecognizer() {
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (videoRef.current?.srcObject) {
-        const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-        tracks.forEach((track) => track.stop());
+        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+        videoRef.current.srcObject = null;
       }
       cameraStartedRef.current = false;
     };
@@ -94,10 +97,11 @@ export default function HandRecognizer() {
   }
 
   async function processFrame() {
+    if (!mountedRef.current) return;
     if (videoRef.current && handsRef.current) {
       await handsRef.current.send({ image: videoRef.current });
     }
-    requestAnimationFrame(processFrame);
+    if (mountedRef.current) requestAnimationFrame(processFrame);
   }
 
   function onResults(results: any) {

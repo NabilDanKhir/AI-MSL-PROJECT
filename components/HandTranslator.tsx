@@ -28,6 +28,7 @@ export default function HandTranslator() {
   const signQueueRef = useRef<string[]>([]);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isInterpretingRef = useRef(false);
+  const mountedRef = useRef(true);
 
   const [output, setOutput] = useState("");
   const [isReady, setIsReady] = useState(false);
@@ -49,8 +50,14 @@ export default function HandTranslator() {
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      if (videoRef.current?.srcObject) {
+        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+        videoRef.current.srcObject = null;
+      }
     };
   }, []);
 
@@ -110,10 +117,11 @@ export default function HandTranslator() {
   }
 
   async function processFrame() {
+    if (!mountedRef.current) return;
     if (videoRef.current && handsRef.current) {
       await handsRef.current.send({ image: videoRef.current });
     }
-    requestAnimationFrame(processFrame);
+    if (mountedRef.current) requestAnimationFrame(processFrame);
   }
 
   function onResults(results: any) {
