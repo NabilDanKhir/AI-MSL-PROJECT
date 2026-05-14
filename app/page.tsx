@@ -56,7 +56,7 @@ export default function HomePage() {
         </div>
 
         <p className="hero-footer-text">
-          Final Year Project · Real-Time BIM Recognition &amp; AI Agent Translation
+          Copyright © Budak JKM KSJ · 2026 · Real-Time BIM Recognition &amp; AI Agent Translation
         </p>
       </div>
     </main>
