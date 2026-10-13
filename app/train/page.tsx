@@ -10,6 +10,9 @@ import "./train.css";
 const NUM_CLASSES = LABELS.length;
 
 type EpochMetrics = { epoch: number; loss: number; acc: number; val_loss: number; val_acc: number };
+type DatasetSample = { label: string; sequence: number[][] };
+type CompileResult = { success?: boolean; output?: string };
+type SaveModelResult = { success?: boolean; error?: string };
 
 export default function TrainPage() {
   const [isCompiling, setIsCompiling] = useState(false);
@@ -31,7 +34,7 @@ export default function TrainPage() {
     setCompileStatus("idle");
 
     const res = await fetch("/api/compile", { method: "POST" });
-    const result = await res.json();
+    const result = (await res.json()) as CompileResult;
 
     setCompileOutput(result.output ?? "");
     setCompileStatus(result.success ? "success" : "error");
@@ -52,13 +55,15 @@ export default function TrainPage() {
       return;
     }
 
-    const dataset = await res.json();
+    const datasetJson = (await res.json()) as unknown;
 
-    if (!Array.isArray(dataset) || dataset.length === 0) {
+    if (!Array.isArray(datasetJson) || datasetJson.length === 0) {
       setStatusMsg("error:dataset_clean.json is empty. Record and clean data first.");
       setIsTraining(false);
       return;
     }
+
+    const dataset = datasetJson as DatasetSample[];
 
     await tf.setBackend("cpu");
     await tf.ready();
@@ -68,7 +73,7 @@ export default function TrainPage() {
     );
 
     const invalidLabels = dataset
-      .map((d: any) => d.label)
+      .map((d) => d.label)
       .filter((l: string) => !(l in labelToIndex));
 
     if (invalidLabels.length > 0) {
@@ -79,12 +84,12 @@ export default function TrainPage() {
     }
 
     const xs = tf.tensor3d(
-      dataset.map((d: any) => d.sequence),
+      dataset.map((d) => d.sequence),
       [dataset.length, SEQUENCE_LENGTH, HAND_FEATURE_COUNT]
     );
 
     const ys = tf.oneHot(
-      tf.tensor1d(dataset.map((d: any) => labelToIndex[d.label]), "int32"),
+      tf.tensor1d(dataset.map((d) => labelToIndex[d.label]), "int32"),
       NUM_CLASSES
     );
 
@@ -158,7 +163,7 @@ export default function TrainPage() {
 
   async function saveModel(model: tf.LayersModel) {
     try {
-      let modelJSON: any = null;
+      let modelJSON: unknown = null;
       let weightsBase64 = "";
 
       await model.save({
@@ -194,7 +199,7 @@ export default function TrainPage() {
         body: JSON.stringify({ modelJSON, weightsBase64 }),
       });
 
-      const result = await res.json();
+      const result = (await res.json()) as SaveModelResult;
 
       if (result.success) {
         setStatusMsg("success:Model saved! public/model/ has been updated.");

@@ -3,22 +3,56 @@
 import { useEffect, useRef, useState } from "react";
 import { extractTwoHandFeatures, SEQUENCE_LENGTH } from "@/lib/handFeatures.js";
 
+type HandLandmark = {
+  x: number;
+  y: number;
+  z?: number;
+};
+
+type HandResults = {
+  multiHandLandmarks?: HandLandmark[][];
+};
+
+type MediaPipeHands = {
+  setOptions: (options: {
+    maxNumHands: number;
+    modelComplexity: number;
+    minDetectionConfidence: number;
+    minTrackingConfidence: number;
+  }) => void;
+  onResults: (callback: (results: HandResults) => void) => void;
+  send: (input: { image: HTMLVideoElement }) => Promise<void> | void;
+};
+
+type MediaPipeHandsConstructor = new (config: { locateFile: (file: string) => string }) => MediaPipeHands;
+type DrawingStyle = { color: string; lineWidth: number; radius?: number };
+type DatasetSample = { label: string; sequence: number[][] };
+
 declare global {
   interface Window {
-    Hands: any;
-    drawConnectors: any;
-    drawLandmarks: any;
-    HAND_CONNECTIONS: any;
+    Hands: MediaPipeHandsConstructor;
+    drawConnectors: (
+      ctx: CanvasRenderingContext2D,
+      landmarks: HandLandmark[],
+      connections: unknown,
+      style: DrawingStyle
+    ) => void;
+    drawLandmarks: (
+      ctx: CanvasRenderingContext2D,
+      landmarks: HandLandmark[],
+      style: DrawingStyle
+    ) => void;
+    HAND_CONNECTIONS: unknown;
   }
 }
 
 export default function HandRecognizer() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const handsRef = useRef<any>(null);
+  const handsRef = useRef<MediaPipeHands | null>(null);
 
   const recordingRef = useRef(false);
-  const samplesRef = useRef<any[]>([]);
+  const samplesRef = useRef<DatasetSample[]>([]);
   const frameBufferRef = useRef<number[][]>([]);
   const [currentLabel, setCurrentLabel] = useState("");
   const currentLabelRef = useRef("");
@@ -32,24 +66,6 @@ export default function HandRecognizer() {
   const cameraStartedRef = useRef(false);
   const initStartedRef = useRef(false);
   const mountedRef = useRef(true);
-
-  useEffect(() => {
-    if (initStartedRef.current) return;
-    initStartedRef.current = true;
-    loadScripts().then(init);
-  }, []);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      if (videoRef.current?.srcObject) {
-        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-        videoRef.current.srcObject = null;
-      }
-      cameraStartedRef.current = false;
-    };
-  }, []);
 
   async function loadScripts() {
     const load = (src: string) =>
@@ -66,19 +82,20 @@ export default function HandRecognizer() {
   }
 
   async function init() {
-    handsRef.current = new window.Hands({
+    const hands = new window.Hands({
       locateFile: (file: string) =>
         `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
     });
 
-    handsRef.current.setOptions({
+    hands.setOptions({
       maxNumHands: 2,
       modelComplexity: 1,
       minDetectionConfidence: 0.7,
       minTrackingConfidence: 0.7,
     });
 
-    handsRef.current.onResults(onResults);
+    hands.onResults(onResults);
+    handsRef.current = hands;
     startCamera();
   }
 
@@ -104,7 +121,7 @@ export default function HandRecognizer() {
     if (mountedRef.current) requestAnimationFrame(processFrame);
   }
 
-  function onResults(results: any) {
+  function onResults(results: HandResults) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -164,6 +181,26 @@ export default function HandRecognizer() {
     });
     if (!res.ok) throw new Error("Failed to save label");
   }
+
+  useEffect(() => {
+    if (initStartedRef.current) return;
+    initStartedRef.current = true;
+    loadScripts().then(init);
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const video = videoRef.current;
+
+    return () => {
+      mountedRef.current = false;
+      if (video?.srcObject) {
+        (video.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+        video.srcObject = null;
+      }
+      cameraStartedRef.current = false;
+    };
+  }, []);
 
   const statusColors = {
     idle:      { bg: "var(--surface)",                        border: "var(--border)",                       text: "var(--muted)" },
@@ -228,7 +265,7 @@ export default function HandRecognizer() {
           )}
         </div>
 
-        {samplesRef.current.length > 0 && (
+        {sequenceCount > 0 && (
           <div>
             <h3>Sequences Captured</h3>
             <div style={{ fontSize: 22, fontWeight: 700, color: "var(--accent)", marginTop: 4 }}>
